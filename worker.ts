@@ -1,7 +1,7 @@
 import { createAppRouter } from './app/router.ts'
 import type { WorkerEnv } from './app/db.ts'
 
-export default {
+const worker = {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     try {
       return await createAppRouter(env).fetch(request)
@@ -11,3 +11,5 @@ export default {
     }
   },
 }
+
+export default worker satisfies ExportedHandler<WorkerEnv>
