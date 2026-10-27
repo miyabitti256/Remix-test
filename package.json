@@ -6,15 +6,24 @@
     "node": ">=24.3.0"
   },
   "scripts": {
-    "dev": "node --watch --import remix/node-tsx server.ts",
-    "start": "node --import remix/node-tsx server.ts",
-    "typecheck": "tsc --noEmit"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:create": "wrangler d1 create remix-test-db",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "types": "wrangler types"
   },
   "dependencies": {
-    "remix": "^3.1.0"
+    "remix": "^3.1.0",
+    "drizzle-orm": "^0.45.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20261026.1",
     "@types/node": "^24.0.0",
-    "typescript": "^5.9.2"
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.149.0"
   }
 }
