@@ -128,5 +128,5 @@ The task API checks the session for each request and scopes every database opera
 ## Notes
 
 - User and session storage are managed by Better Auth and persisted in the same D1 database used by Drizzle.
-- A user account can be deleted through Better Auth; task rows reference the user with `ON DELETE CASCADE`.
+- Task rows reference the Better Auth user with `ON DELETE CASCADE`, so database-level user deletion also removes that user's tasks.
 - Sign-up is currently email/password only. No OAuth provider or email delivery service is configured.
