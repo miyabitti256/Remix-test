@@ -138,6 +138,33 @@ const documentHtml = String.raw`<!doctype html>
     .page-footer { display: flex; justify-content: space-between; gap: 16px; padding: 19px 0 0; color: #9aa095; font-size: 10px; }
     .footer-brand { color: #697565; font-family: Georgia, serif; font-size: 13px; }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    [hidden] { display: none !important; }
+    body:not(.authenticated) .stats,
+    body:not(.authenticated) .workspace { display: none !important; }
+    .auth-panel {
+      max-width: 520px; margin: 0 auto 24px; padding: 26px;
+      border: 1px solid var(--line); border-radius: 19px;
+      background: var(--surface); box-shadow: var(--shadow);
+    }
+    .auth-heading { margin: 0; font-family: Georgia, "Yu Mincho", serif; font-size: 25px; font-weight: 500; letter-spacing: -.5px; }
+    .auth-description { margin: 6px 0 20px; color: var(--muted); font-size: 12px; }
+    .auth-form { display: grid; gap: 13px; }
+    .auth-field { display: grid; gap: 6px; color: #65705f; font-size: 11px; font-weight: 700; }
+    .auth-input {
+      width: 100%; min-height: 43px; padding: 10px 12px; border: 1px solid #e2e5db;
+      border-radius: 10px; background: #fbfcf8; color: var(--ink); font-size: 13px;
+    }
+    .auth-input:focus { border-color: #9cae98; outline: 3px solid rgba(86,122,82,.09); }
+    .auth-submit {
+      min-height: 44px; margin-top: 2px; border: 0; border-radius: 10px;
+      background: var(--green); color: #fff; cursor: pointer; font-size: 12px; font-weight: 800;
+    }
+    .auth-submit:hover { background: var(--green-deep); }
+    .auth-submit:disabled { cursor: wait; opacity: .65; }
+    .auth-switch { margin-top: 14px; border: 0; padding: 6px 0; background: transparent; color: var(--green); cursor: pointer; font-size: 11px; font-weight: 700; }
+    .auth-message { min-height: 0; margin-top: 12px; color: #a34d37; font-size: 11px; }
+    .auth-message:empty { display: none; }
+    button.avatar { border: 0; cursor: pointer; }
     @media (max-width: 780px) {
       .workspace { grid-template-columns: 1fr; }
       .side-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
@@ -186,7 +213,7 @@ const documentHtml = String.raw`<!doctype html>
         </span>
         <span><span class="brand-name">mori</span><span class="brand-sub">a little task garden</span></span>
       </a>
-      <div class="topbar-right"><span>小さな一歩を、大切に。</span><span class="avatar" aria-label="ゲスト">m</span></div>
+      <div class="topbar-right"><span id="account-label">ログインして始めよう</span><button class="avatar" id="sign-out" type="button" aria-label="ログアウト" title="ログアウト" hidden>↗</button></div>
     </header>
 
     <main>
@@ -200,6 +227,29 @@ const documentHtml = String.raw`<!doctype html>
           <div class="date-label">TODAY'S DATE</div>
           <div class="date-value" id="today-date">今日</div>
         </div>
+      </section>
+
+      <section class="auth-panel" id="auth-panel" aria-labelledby="auth-title">
+        <div class="eyebrow"><span class="eyebrow-dot"></span> YOUR TASK GARDEN</div>
+        <h2 class="auth-heading" id="auth-title" style="margin-top:10px">ログインして、続きを。</h2>
+        <p class="auth-description" id="auth-description">アカウントを作成すると、タスクを安全に保存して、あとから続けられます。</p>
+        <form class="auth-form" id="auth-form">
+          <label class="auth-field" id="auth-name-field" hidden>
+            お名前
+            <input class="auth-input" id="auth-name" name="name" type="text" maxlength="80" autocomplete="name" placeholder="お名前">
+          </label>
+          <label class="auth-field">
+            メールアドレス
+            <input class="auth-input" id="auth-email" name="email" type="email" maxlength="254" autocomplete="email" required placeholder="you@example.com">
+          </label>
+          <label class="auth-field">
+            パスワード
+            <input class="auth-input" id="auth-password" name="password" type="password" minlength="8" autocomplete="current-password" required placeholder="8文字以上">
+          </label>
+          <button class="auth-submit" id="auth-submit" type="submit">ログイン</button>
+        </form>
+        <button class="auth-switch" id="auth-mode-toggle" type="button">はじめての方はこちら — アカウントを作成</button>
+        <div class="auth-message" id="auth-message" role="status" aria-live="polite"></div>
       </section>
 
       <section class="stats" aria-label="タスクの概要">
@@ -268,11 +318,25 @@ const documentHtml = String.raw`<!doctype html>
       'use strict';
       var tasks = [];
       var filter = 'all';
+      var authMode = 'signin';
       var list = document.getElementById('task-list');
       var empty = document.getElementById('empty-state');
       var input = document.getElementById('new-task');
       var form = document.getElementById('add-form');
       var summary = document.getElementById('list-summary');
+      var authPanel = document.getElementById('auth-panel');
+      var authForm = document.getElementById('auth-form');
+      var authNameField = document.getElementById('auth-name-field');
+      var authName = document.getElementById('auth-name');
+      var authEmail = document.getElementById('auth-email');
+      var authPassword = document.getElementById('auth-password');
+      var authSubmit = document.getElementById('auth-submit');
+      var authToggle = document.getElementById('auth-mode-toggle');
+      var authTitle = document.getElementById('auth-title');
+      var authDescription = document.getElementById('auth-description');
+      var authMessage = document.getElementById('auth-message');
+      var accountLabel = document.getElementById('account-label');
+      var signOutButton = document.getElementById('sign-out');
 
       document.getElementById('today-date').textContent = new Intl.DateTimeFormat('ja-JP', {
         year: 'numeric', month: 'long', day: 'numeric', weekday: 'short'
@@ -284,22 +348,28 @@ const documentHtml = String.raw`<!doctype html>
         });
       }
 
+      function setAuthMessage(message) {
+        authMessage.textContent = message || '';
+      }
+
       async function requestApi(path, method, payload) {
-        var options = { method: method || 'GET', headers: { 'Accept': 'application/json' } };
+        var options = { method: method || 'GET', headers: { 'Accept': 'application/json' }, credentials: 'same-origin', cache: 'no-store' };
         if (payload !== undefined) {
           options.headers['Content-Type'] = 'application/json';
           options.body = JSON.stringify(payload);
         }
 
         var response = await fetch(path, options);
-        var result = {};
+        var result = null;
         try {
           if (response.status !== 204) result = await response.json();
         } catch (error) {
-          result = {};
+          result = null;
         }
         if (!response.ok) {
-          throw new Error(result && result.error ? result.error : '保存に失敗しました。もう一度お試しください。');
+          var message = result && (result.message || result.error || (result.error && result.error.message));
+          if (message && typeof message === 'object') message = message.message || 'リクエストに失敗しました。';
+          throw new Error(typeof message === 'string' ? message : (response.status === 401 ? 'ログインしてください。' : 'リクエストに失敗しました。もう一度お試しください。'));
         }
         return result;
       }
@@ -368,11 +438,56 @@ const documentHtml = String.raw`<!doctype html>
 
       async function refreshTasks() {
         tasks = await requestApi('/api/tasks');
+        if (!Array.isArray(tasks)) throw new Error('タスク一覧を読み込めませんでした。');
         render();
       }
 
-      function showError(error) {
+      function showTaskError(error) {
         summary.textContent = error && error.message ? error.message : 'エラーが発生しました。';
+      }
+
+      function setAuthMode(mode) {
+        authMode = mode;
+        var isSignup = authMode === 'signup';
+        authNameField.hidden = !isSignup;
+        authName.required = isSignup;
+        authPassword.autocomplete = isSignup ? 'new-password' : 'current-password';
+        authTitle.textContent = isSignup ? 'アカウントを作成' : 'ログインして、続きを。';
+        authDescription.textContent = isSignup
+          ? 'メールアドレスとパスワードを登録して、タスクを保存しよう。'
+          : 'アカウントにログインすると、保存したタスクを続けられます。';
+        authSubmit.textContent = isSignup ? 'アカウントを作成' : 'ログイン';
+        authToggle.textContent = isSignup ? 'すでに登録済みの方はこちら — ログイン' : 'はじめての方はこちら — アカウントを作成';
+        setAuthMessage('');
+      }
+
+      async function loadSession() {
+        var response = await fetch('/api/auth/get-session', {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
+        if (!response.ok) throw new Error('認証サーバーに接続できません。設定を確認してください。');
+        var sessionData = await response.json();
+
+        if (sessionData && sessionData.user && sessionData.user.id) {
+          document.body.classList.add('authenticated');
+          authPanel.hidden = true;
+          var user = sessionData.user;
+          accountLabel.textContent = user.name || user.email || 'ログイン中';
+          signOutButton.hidden = false;
+          await refreshTasks();
+          return true;
+        }
+
+        document.body.classList.remove('authenticated');
+        authPanel.hidden = false;
+        signOutButton.hidden = true;
+        accountLabel.textContent = 'ログインして始めよう';
+        tasks = [];
+        render();
+        return false;
       }
 
       form.addEventListener('submit', async function (event) {
@@ -389,7 +504,7 @@ const documentHtml = String.raw`<!doctype html>
           await refreshTasks();
           input.focus();
         } catch (error) {
-          showError(error);
+          showTaskError(error);
         }
       });
 
@@ -407,7 +522,7 @@ const documentHtml = String.raw`<!doctype html>
           }
           await refreshTasks();
         } catch (error) {
-          showError(error);
+          showTaskError(error);
         }
       });
 
@@ -423,13 +538,75 @@ const documentHtml = String.raw`<!doctype html>
           await requestApi('/api/tasks/clear-completed', 'POST');
           await refreshTasks();
         } catch (error) {
-          showError(error);
+          showTaskError(error);
         }
       });
 
-      refreshTasks().catch(showError);
+      authToggle.addEventListener('click', function () {
+        setAuthMode(authMode === 'signin' ? 'signup' : 'signin');
+      });
+
+      authForm.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        setAuthMessage('');
+        var isSignup = authMode === 'signup';
+        var email = authEmail.value.trim();
+        var password = authPassword.value;
+        var name = authName.value.trim();
+
+        if (isSignup && !name) {
+          setAuthMessage('お名前を入力してください。');
+          authName.focus();
+          return;
+        }
+        if (!email || !password) {
+          setAuthMessage('メールアドレスとパスワードを入力してください。');
+          return;
+        }
+
+        authSubmit.disabled = true;
+        authSubmit.textContent = isSignup ? '登録しています…' : 'ログインしています…';
+        try {
+          await requestApi(
+            isSignup ? '/api/auth/sign-up/email' : '/api/auth/sign-in/email',
+            'POST',
+            isSignup ? { name: name, email: email, password: password } : { email: email, password: password, rememberMe: true }
+          );
+          var authenticated = await loadSession();
+          if (!authenticated) {
+            setAuthMessage(isSignup ? '登録を受け付けました。メール確認が必要な場合は受信箱をご確認ください。' : 'ログインできませんでした。入力内容をご確認ください。');
+          }
+        } catch (error) {
+          setAuthMessage(error && error.message ? error.message : '認証に失敗しました。もう一度お試しください。');
+        } finally {
+          authSubmit.disabled = false;
+          authSubmit.textContent = authMode === 'signup' ? 'アカウントを作成' : 'ログイン';
+        }
+      });
+
+      signOutButton.addEventListener('click', async function () {
+        signOutButton.disabled = true;
+        try {
+          await requestApi('/api/auth/sign-out', 'POST', {});
+          filter = 'all';
+          await loadSession();
+          setAuthMode('signin');
+          setAuthMessage('ログアウトしました。');
+        } catch (error) {
+          accountLabel.textContent = error && error.message ? error.message : 'ログアウトに失敗しました。';
+        } finally {
+          signOutButton.disabled = false;
+        }
+      });
+
+      setAuthMode('signin');
+      loadSession().catch(function (error) {
+        document.body.classList.remove('authenticated');
+        authPanel.hidden = false;
+        setAuthMessage(error && error.message ? error.message : '認証サービスに接続できません。');
+      });
     })();
-  </script>
+  </script>t>
 </body>
 </html>`;
 
