@@ -1,4 +1,4 @@
-const documentHtml = String.raw\`<!doctype html>
+const documentHtml = String.raw`<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8">
@@ -430,7 +430,7 @@ const documentHtml = String.raw\`<!doctype html>
     })();
   </script>
 </body>
-</html>\`;
+</html>`;
 
 export function renderHomePage(): Response {
   return new Response(documentHtml, {
