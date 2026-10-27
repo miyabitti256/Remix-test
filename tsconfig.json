@@ -9,8 +9,7 @@
       "ESNext"
     ],
     "types": [
-      "@cloudflare/workers-types",
-      "node"
+      "@cloudflare/workers-types"
     ],
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
