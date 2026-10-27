@@ -259,7 +259,7 @@ const documentHtml = String.raw`<!doctype html>
           </div>
         </aside>
       </div>
-      <footer class="page-footer"><span class="footer-brand">mori <span style="font-family:inherit;font-size:10px;color:#9aa095">— grow at your own pace</span></span><span>タスクはこのブラウザーに保存されます。</span></footer>
+      <footer class="page-footer"><span class="footer-brand">mori <span style="font-family:inherit;font-size:10px;color:#9aa095">— grow at your own pace</span></span><span>タスクは自動で保存されます。</span></footer>
     </main>
   </div>
 
