@@ -266,33 +266,13 @@ const documentHtml = String.raw`<!doctype html>
   <script>
     (function () {
       'use strict';
-      var STORAGE_KEY = 'mori-tasks-v1';
-      var starterTasks = [
-        { id: 'sample-1', title: '今週のやることを整理する', tag: '計画', kind: 'work', done: true, createdAt: 1 },
-        { id: 'sample-2', title: 'アプリのトップページを仕上げる', tag: '制作', kind: 'design', done: false, createdAt: 2 },
-        { id: 'sample-3', title: '少し休憩して、コーヒーを淹れる', tag: '自分時間', kind: 'personal', done: false, createdAt: 3 }
-      ];
-      var tasks = starterTasks.slice();
+      var tasks = [];
       var filter = 'all';
-      var canSave = true;
-      try {
-        var saved = window.localStorage.getItem(STORAGE_KEY);
-        if (saved !== null) {
-          var parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            tasks = parsed.filter(function (item) {
-              return item && typeof item.id === 'string' && typeof item.title === 'string' && typeof item.done === 'boolean';
-            });
-          }
-        }
-      } catch (error) {
-        canSave = false;
-      }
-
       var list = document.getElementById('task-list');
       var empty = document.getElementById('empty-state');
       var input = document.getElementById('new-task');
       var form = document.getElementById('add-form');
+      var summary = document.getElementById('list-summary');
 
       document.getElementById('today-date').textContent = new Intl.DateTimeFormat('ja-JP', {
         year: 'numeric', month: 'long', day: 'numeric', weekday: 'short'
@@ -304,19 +284,30 @@ const documentHtml = String.raw`<!doctype html>
         });
       }
 
-      function save() {
-        if (!canSave) return;
-        try {
-          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-        } catch (error) {
-          canSave = false;
-          document.getElementById('list-summary').textContent = '保存できません。ブラウザーの保存設定をご確認ください。';
+      async function requestApi(path, method, payload) {
+        var options = { method: method || 'GET', headers: { 'Accept': 'application/json' } };
+        if (payload !== undefined) {
+          options.headers['Content-Type'] = 'application/json';
+          options.body = JSON.stringify(payload);
         }
+
+        var response = await fetch(path, options);
+        var result = {};
+        try {
+          if (response.status !== 204) result = await response.json();
+        } catch (error) {
+          result = {};
+        }
+        if (!response.ok) {
+          throw new Error(result && result.error ? result.error : '保存に失敗しました。もう一度お試しください。');
+        }
+        return result;
       }
 
       function progressText(total, done) {
-        return total === 0 ? 'まずは1つ、追加してみよう。' :
-          (done === total ? 'すべて完了！よくできました。' : total + 'つのうち、' + done + 'つ完了。');
+        if (total === 0) return 'まずは1つ、追加してみよう。';
+        if (done === total) return 'すべて完了！よくできました。';
+        return total + 'つのうち、' + done + 'つ完了。';
       }
 
       function taskMarkup(task) {
@@ -354,9 +345,11 @@ const documentHtml = String.raw`<!doctype html>
         document.getElementById('count-done').textContent = doneCount;
         document.getElementById('list-summary').textContent = total + 'つのタスクを管理中';
         document.getElementById('clear-done').hidden = doneCount === 0;
+
         document.querySelectorAll('[data-filter]').forEach(function (button) {
           button.setAttribute('aria-pressed', String(button.getAttribute('data-filter') === filter));
         });
+
         list.innerHTML = visible.map(taskMarkup).join('');
         empty.classList.toggle('visible', visible.length === 0);
         list.hidden = visible.length === 0;
@@ -373,44 +366,49 @@ const documentHtml = String.raw`<!doctype html>
         }
       }
 
-      form.addEventListener('submit', function (event) {
+      async function refreshTasks() {
+        tasks = await requestApi('/api/tasks');
+        render();
+      }
+
+      function showError(error) {
+        summary.textContent = error && error.message ? error.message : 'エラーが発生しました。';
+      }
+
+      form.addEventListener('submit', async function (event) {
         event.preventDefault();
         var title = input.value.trim();
         if (!title) {
           input.focus();
           return;
         }
-        tasks.unshift({
-          id: 'task-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
-          title: title.slice(0, 120),
-          tag: '新しいタスク',
-          kind: 'work',
-          done: false,
-          createdAt: Date.now()
-        });
-        save();
-        filter = 'all';
-        input.value = '';
-        render();
-        input.focus();
+        try {
+          await requestApi('/api/tasks', 'POST', { title: title });
+          filter = 'all';
+          input.value = '';
+          await refreshTasks();
+          input.focus();
+        } catch (error) {
+          showError(error);
+        }
       });
 
-      list.addEventListener('click', function (event) {
+      list.addEventListener('click', async function (event) {
         var button = event.target.closest('button[data-action]');
         if (!button) return;
         var item = button.closest('[data-id]');
         if (!item) return;
         var id = item.getAttribute('data-id');
-        if (button.getAttribute('data-action') === 'toggle') {
-          tasks = tasks.map(function (task) {
-            if (task.id === id) return Object.assign({}, task, { done: !task.done });
-            return task;
-          });
-        } else if (button.getAttribute('data-action') === 'delete') {
-          tasks = tasks.filter(function (task) { return task.id !== id; });
+        try {
+          if (button.getAttribute('data-action') === 'toggle') {
+            await requestApi('/api/tasks/' + encodeURIComponent(id) + '/toggle', 'POST');
+          } else if (button.getAttribute('data-action') === 'delete') {
+            await requestApi('/api/tasks/' + encodeURIComponent(id) + '/delete', 'POST');
+          }
+          await refreshTasks();
+        } catch (error) {
+          showError(error);
         }
-        save();
-        render();
       });
 
       document.querySelectorAll('[data-filter]').forEach(function (button) {
@@ -420,13 +418,16 @@ const documentHtml = String.raw`<!doctype html>
         });
       });
 
-      document.getElementById('clear-done').addEventListener('click', function () {
-        tasks = tasks.filter(function (task) { return !task.done; });
-        save();
-        render();
+      document.getElementById('clear-done').addEventListener('click', async function () {
+        try {
+          await requestApi('/api/tasks/clear-completed', 'POST');
+          await refreshTasks();
+        } catch (error) {
+          showError(error);
+        }
       });
 
-      render();
+      refreshTasks().catch(showError);
     })();
   </script>
 </body>
