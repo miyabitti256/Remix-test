@@ -1,34 +1,43 @@
 # Remix-test / mori
 
-A small Japanese task manager built with **Remix 3**, **Cloudflare Workers**, **D1**, and **Drizzle ORM**.
+A small Japanese task manager built with **Remix 3**, **Cloudflare Workers**, **Cloudflare D1**, **Drizzle ORM**, and **Better Auth**.
 
 ## Features
 
-- Add, complete, and delete tasks
-- Filter by all, active, or completed tasks
-- Completion progress
-- Persistent task storage in Cloudflare D1 through Drizzle
-- Anonymous browser workspaces, isolated with an HTTP-only cookie
+- Email and password sign-up, sign-in, and sign-out
+- Session cookies managed by Better Auth
+- Task creation, completion, deletion, and filtering
+- Per-user task isolation enforced by the API and database queries
+- Persistent task storage in Cloudflare D1 through Drizzle ORM
 - `/health` health-check endpoint
 
-There is no sign-in system. Each browser gets an anonymous workspace. Clearing that browser's cookies creates a new workspace; it does not recover the previous one.
+Email verification and password-reset email delivery are not configured yet. Accounts can sign in immediately after signing up. Add an email provider and enable verification before using this as a public production service.
+
+The previous anonymous task table is preserved as `tasks_legacy_anonymous` during migration. Those old anonymous tasks are not automatically attached to a new account.
 
 ## Requirements
 
 - Node.js 24.3.0 or newer
-- A Cloudflare account for creating a remote D1 database and deploying the Worker
+- A Cloudflare account with permission to create D1 databases and deploy Workers
 
-## Setup
+## Local setup
 
-### 1. Install dependencies
+### 1. Install dependencies and configure a local secret
 
 ```bash
 npm install
+cp .dev.vars.example .dev.vars
 ```
 
-### 2. Create a D1 database
+Generate a unique secret (32+ characters) and put it in `.dev.vars` as `BETTER_AUTH_SECRET`:
 
-Log in to Cloudflare through Wrangler, then create the database:
+```bash
+openssl rand -base64 32
+```
+
+Do not commit `.dev.vars`. It is ignored by Git.
+
+### 2. Create the D1 database
 
 ```bash
 npx wrangler login
@@ -37,48 +46,51 @@ npm run db:create
 
 Copy the `database_id` from Wrangler's output into `wrangler.jsonc`, replacing the all-zero placeholder in the `d1_databases` entry. Keep the binding name as `DB`.
 
-### 3. Apply the D1 migration
-
-For the local development database:
+### 3. Apply migrations locally
 
 ```bash
 npm run db:migrate:local
 ```
 
-For the Cloudflare remote database:
+This creates Better Auth's `user`, `session`, `account`, and `verification` tables, then rebuilds the task table with a foreign key to the authenticated user.
 
-```bash
-npm run db:migrate:remote
-```
-
-### 4. Run locally
+### 4. Run the Worker
 
 ```bash
 npm run dev
 ```
 
-Open the local URL printed by Wrangler (usually http://localhost:8787).
+Open the local URL printed by Wrangler (usually [http://localhost:8787](http://localhost:8787)). Create an account from the sign-in panel to start using mori.
 
-### 5. Deploy
+## Deploy to Cloudflare
 
-After setting your real D1 database ID and applying the remote migration:
+First update `database_id` in `wrangler.jsonc` with the real D1 database ID. Apply migrations to the remote database, store the Better Auth secret in Cloudflare, and deploy:
 
 ```bash
+npm run db:migrate:remote
+npx wrangler secret put BETTER_AUTH_SECRET
 npm run deploy
 ```
 
-## Database workflow
+When Wrangler prompts for the secret, use a generated random value with at least 32 characters. Keep the value private. The app derives its base URL from the incoming request by default, so it can work on the assigned Workers URL or a configured custom domain. Do not deploy with the example secret.
 
-The Drizzle schema lives in `app/db/schema.ts`. The initial D1-compatible SQL migration and Drizzle snapshot are committed in `drizzle/`.
+## Database and migrations
 
-When you change the schema:
+- `app/db/schema.ts`: Drizzle task schema, linked to Better Auth's user table
+- `app/db/auth-schema.ts`: Drizzle definitions for Better Auth tables
+- `app/auth.ts`: Better Auth configuration using the native D1 binding
+- `drizzle/0000_create_tasks.sql`: initial task schema
+- `drizzle/0001_create_better_auth_tables.sql`: Better Auth tables
+- `drizzle/0002_scope_tasks_to_user.sql`: preserve the old anonymous table and create user-owned tasks
+
+After changing a schema, generate and review a new migration:
 
 ```bash
 npm run db:generate
 npm run db:migrate:local
 ```
 
-Review and commit the generated SQL and updated `drizzle/meta/` files. Apply it to the remote database with `npm run db:migrate:remote` when ready.
+Then apply the reviewed migration remotely with `npm run db:migrate:remote`.
 
 ## Commands
 
@@ -93,13 +105,28 @@ Review and commit the generated SQL and updated `drizzle/meta/` files. Apply it 
 | `npm run deploy` | Deploy the Worker |
 | `npm run types` | Generate Workers environment types |
 
-## API
+## Auth and API routes
 
-- `GET /api/tasks` — list tasks for this anonymous browser
+Better Auth handles the `/api/auth/*` endpoints directly in the Worker. The UI uses:
+
+- `POST /api/auth/sign-up/email` — create an account
+- `POST /api/auth/sign-in/email` — sign in
+- `GET /api/auth/get-session` — read the current session
+- `POST /api/auth/sign-out` — sign out
+
+Task endpoints require an authenticated session:
+
+- `GET /api/tasks` — list the signed-in user's tasks
 - `POST /api/tasks` — create a task with JSON `{"title":"..." }`
 - `POST /api/tasks/:id/toggle` — toggle completion
 - `POST /api/tasks/:id/delete` — delete a task
 - `POST /api/tasks/clear-completed` — delete completed tasks
 - `GET /health` — health check
 
-Mutations are scoped to the browser's anonymous ID. The application does not expose the owner ID to the page, and task rows are filtered by that ID for every read and write.
+The task API checks the session for each request and scopes every database operation to that user's ID. Mutating task endpoints also reject cross-origin requests.
+
+## Notes
+
+- User and session storage are managed by Better Auth and persisted in the same D1 database used by Drizzle.
+- A user account can be deleted through Better Auth; task rows reference the user with `ON DELETE CASCADE`.
+- Sign-up is currently email/password only. No OAuth provider or email delivery service is configured.
