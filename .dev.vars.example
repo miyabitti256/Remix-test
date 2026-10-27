@@ -1,5 +1,5 @@
 # Copy this file to .dev.vars and generate a unique secret:
 # openssl rand -base64 32
-BETTER_AUTH_SECRET="replace-with-a-unique-random-secret-of-at-least-32-characters"
+BETTER_AUTH_SECRET="replace-me"
 # Optional; when omitted, the Worker derives the base URL from each request.
 # BETTER_AUTH_URL="http://localhost:8787"
